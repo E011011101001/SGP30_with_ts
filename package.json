@@ -1,12 +1,12 @@
 {
-  "name": "dictionary-cli",
+  "name": "co2-watch",
   "version": "0.1.0",
   "devDependencies": {
     "@types/node": "^14.11.2",
     "@typescript-eslint/eslint-plugin": "^4.3.0",
-    "@typescript-eslint/parser": "^4.3.0",
+    "@typescript-eslint/parser": "^4.28.3",
     "@yarnpkg/pnpify": "^2.3.1",
     "eslint": "^7.10.0",
-    "typescript": "^4.0.3"
+    "typescript": "^4.3.5"
   }
 }
