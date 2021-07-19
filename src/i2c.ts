@@ -4,7 +4,7 @@ import assert = require('assert')
 
 import sleep from './utils'
 
-const T = 10
+const T = 0
 const ACK = 0
 
 
@@ -24,7 +24,12 @@ export default class i2c {
   }
 
   private async _S () {
-    assert(this._scl.readSync() && this._sda.readSync(), 'Only start when scl & sda are high')
+    this._scl.setDirection('out')
+    this._scl.writeSync(1)
+    this._sda.setDirection('out')
+    this._sda.writeSync(1)
+    await sleep(T)
+
     this._sda.writeSync(0)
     await sleep(T)
     this._scl.writeSync(0)
@@ -42,23 +47,12 @@ export default class i2c {
     this._sda.writeSync(1)
     await sleep(T)
   }
-
-  private async send_byte (byte: Buffer): Promise<BinaryValue> {
-    assert(byte.length === 1)
-
-    if (this._sda.direction() !== 'out') {
-      this._sda.setDirection('out')
+  
+  private async _get_ack (): Promise<BinaryValue> {
+    if (this._sda.direction() !== 'in') {
+      this._sda.setDirection('in')
     }
 
-    for (let i = 7; i >= 0; --i) {
-      this._sda.writeSync((byte[0] & (1 << i)) ? 1 : 0)
-      this._scl.writeSync(1)
-      await sleep(T)
-      this._scl.writeSync(0)
-      await sleep(T)
-    }
-
-    this._sda.setDirection('in')
     this._scl.writeSync(1)
     await sleep(T)
     const ack = this._sda.readSync()
@@ -68,17 +62,37 @@ export default class i2c {
     return ack
   }
 
-  private async read_byte (): Promise<Buffer> {
+  private async _send_byte (byte: Buffer): Promise<BinaryValue> {
+    assert(byte.length === 1)
+
+    if (this._sda.direction() !== 'out') {
+      this._sda.setDirection('out')
+    }
+
+    for (let i = 7; i >= 0; --i) {
+      const bitToSend = (byte[0] & (1 << i)) ? 1 : 0
+      this._sda.writeSync(bitToSend)
+      this._scl.writeSync(1)
+      await sleep(T)
+      this._scl.writeSync(0)
+      await sleep(T)
+    }
+
+    return (await this._get_ack())
+  }
+
+  private async _recv_byte (): Promise<Buffer> {
     if (this._sda.direction() !== 'in') {
       this._sda.setDirection('in')
     }
 
-    const readByte = Buffer.alloc(1, 0)
+    const recvByte = Buffer.alloc(1, 0)
 
     for (let i = 0; i < 8; ++i) {
       this._scl.writeSync(1)
       await sleep(T)
-      readByte[0] = (readByte[0] << 1) + this._sda.readSync()
+      const recvBit = this._sda.readSync()
+      recvByte[0] = (recvByte[0] << 1) + recvBit
       this._scl.writeSync(0)
       await sleep(T)
     }
@@ -91,28 +105,31 @@ export default class i2c {
     this._scl.writeSync(0)
     await sleep(T)
 
-    return readByte
+    return recvByte
   }
 
-  public async send (addr: number, data: Buffer): Promise<void> {
+  public async send (addr: number, command: Buffer, justCommand = false): Promise<void> {
     assert((addr < 0b0111_1111 ), 'Address should be 7 bits')
     await this._S()
-    await this.send_byte(Buffer.of((addr << 1) & 0b1111_1110))
+    await this._send_byte(Buffer.of((addr << 1) & 0b1111_1110))
 
-    for (let i = 0; i < data.length; ++i) {
-      await this.send_byte(Buffer.of(data[i]))
+    for (let i = 0; i < command.length; ++i) {
+      await this._send_byte(Buffer.of(command[i]))
     }
-    await this._P()
+
+    if (justCommand) {
+      await this._P()
+    }
   }
 
   public async recv (addr: number, dataBytes: number): Promise<Buffer> {
     assert((addr < 0b0111_1111 ), 'Address should be 7 bits')
     await this._S()
-    await this.send_byte(Buffer.of((addr << 1) & 0b1111_1110))
+    await this._send_byte(Buffer.of((addr << 1) | 0b0000_0001))
 
     const recvData = Buffer.alloc(dataBytes)
     for (let i = 0; i < dataBytes; ++i) {
-      recvData[i] = await this.read_byte()[0]
+      recvData[i] = (await this._recv_byte())[0]
     }
     await this._P()
     return recvData

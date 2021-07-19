@@ -1,6 +1,9 @@
 {
   "name": "co2-watch",
   "version": "0.1.0",
+  "scripts": {
+    "start": "yarn node dist"
+  },
   "devDependencies": {
     "@types/node": "^14.11.2",
     "@types/nodemailer": "^6.4.4",
